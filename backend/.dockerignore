@@ -1,0 +1,11 @@
+.env
+*.json.bak*
+**/*.bak*
+firebase-*.json
+*firebase-adminsdk*.json
+*service-account*.json
+**/node_modules
+**/__pycache__
+incoming
+verified_transcripts
+processed_hashes.json

@@ -1,0 +1,47 @@
+# Environment and secrets
+.env
+**/.env
+**/*.env
+*.key
+*.pem
+# Firebase Admin SDK service account keys (backend-only, never committed)
+backend/firebase-*.json
+backend/*service-account*.json
+backend/*firebase-adminsdk*.json
+
+# Python
+**/__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.venv/
+
+# Node / build
+node_modules/
+**/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+.eslintcache
+# NOTE: backend/alamaticz-zoho-mcp/dist/ is intentionally NOT ignored — its
+# source (src/) is missing several tools (upsert_records, update_records,
+# delete_records, convert_lead, add_tags, get_deleted_records,
+# get_related_records) that only exist in the already-compiled dist/. Do not
+# gitignore it and do not run `npm run build` there until src/ is fixed to
+# match, or those tools will silently disappear.
+
+# Logs and runtime data (recursive)
+logs/
+**/*.log
+**/incoming/
+**/uploads/
+**/processing/
+**/processed/
+**/outputs/
+**/verified_transcripts/
+
+# IDE
+.vscode/
+.idea/
+.claude/

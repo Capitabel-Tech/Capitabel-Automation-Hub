@@ -1,0 +1,24 @@
+# Core Web Server
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+requests
+
+# AI Services (APIs)
+openai
+mutagen
+
+# Document Processing (Excel)
+pandas
+openpyxl
+
+# CRM & Automation
+mcp
+
+# Data Utilities
+pydantic
+
+# Auth + Activity Logging
+firebase-admin
+psycopg2-binary
