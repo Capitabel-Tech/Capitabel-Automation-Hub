@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Mail, Lock, ArrowRight, ArrowLeft, ShieldCheck, Cpu, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Mail, Lock, ArrowRight, ArrowLeft, ShieldCheck, Cpu, User, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { authLeads as auth } from '../firebase';
-import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { logEvent } from '../activityLog';
 
 const GREETINGS = [
@@ -19,16 +19,17 @@ const GREETINGS = [
   "Data Stream Connected"
 ];
 
-// Sign-in only — no sign-up exists for this tool at all. Leads & Meetings
-// writes directly to production Zoho, so access is limited to one
-// pre-created account (enforced in App.jsx's ProtectedRoute), not open
-// self-registration.
 const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGreeting }) => {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const navigate = useNavigate();
 
@@ -42,27 +43,66 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccessMessage('');
 
-    try {
-      await setPersistence(auth, browserSessionPersistence);
-      const credential = await signInWithEmailAndPassword(auth, email, password);
-      const idToken = await credential.user.getIdToken();
-      logEvent({ tool: 'leads_meetings', action: 'LOGIN', status: 'success', idToken });
+    if (isSignUp) {
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        setIsLoading(false);
+        return;
+      }
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, { displayName: name });
 
-      const randomIndex = Math.floor(Math.random() * GREETINGS.length);
-      setCurrentGreeting(GREETINGS[randomIndex]);
-      setIsGreeting(true);
-      setTimeout(() => { setIsGreeting(false); navigate('/leads-meetings'); }, 2000);
-    } catch (err) {
-      console.error("Login error:", err);
-      let msg = err.message.replace('Firebase: ', '');
-      if (msg.includes('auth/invalid-credential')) msg = "Invalid email or password.";
-      logEvent({
-        tool: 'leads_meetings', action: 'LOGIN', status: 'failure',
-        attemptedEmail: email, details: { error: msg },
-      });
-      setError(msg);
-      setIsLoading(false);
+        const idToken = await userCredential.user.getIdToken();
+        logEvent({ tool: 'leads_meetings', action: 'SIGNUP', status: 'success', idToken });
+
+        // Firebase signs the new account in immediately on creation - sign
+        // back out so the user has to explicitly sign in themselves, rather
+        // than being dropped straight into a tool that syncs to production Zoho.
+        await auth.signOut();
+
+        setPassword('');
+        setConfirmPassword('');
+        setSuccessMessage('Account created successfully! Redirecting you to sign in...');
+        setTimeout(() => {
+          setSuccessMessage('');
+          setIsSignUp(false);
+          setIsLoading(false);
+        }, 2000);
+      } catch (err) {
+        console.error("Signup error:", err);
+        let msg = err.message.replace('Firebase: ', '');
+        logEvent({
+          tool: 'leads_meetings', action: 'SIGNUP', status: 'failure',
+          attemptedEmail: email, details: { error: msg },
+        });
+        setError(msg);
+        setIsLoading(false);
+      }
+    } else {
+      try {
+        await setPersistence(auth, browserSessionPersistence);
+        const credential = await signInWithEmailAndPassword(auth, email, password);
+        const idToken = await credential.user.getIdToken();
+        logEvent({ tool: 'leads_meetings', action: 'LOGIN', status: 'success', idToken });
+
+        const randomIndex = Math.floor(Math.random() * GREETINGS.length);
+        setCurrentGreeting(GREETINGS[randomIndex]);
+        setIsGreeting(true);
+        setTimeout(() => { setIsGreeting(false); navigate('/leads-meetings'); }, 2000);
+      } catch (err) {
+        console.error("Login error:", err);
+        let msg = err.message.replace('Firebase: ', '');
+        if (msg.includes('auth/invalid-credential')) msg = "Invalid email or password.";
+        logEvent({
+          tool: 'leads_meetings', action: 'LOGIN', status: 'failure',
+          attemptedEmail: email, details: { error: msg },
+        });
+        setError(msg);
+        setIsLoading(false);
+      }
     }
   };
 
@@ -145,10 +185,10 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
               <Cpu color="white" size={32} />
             </motion.div>
             <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem', letterSpacing: '-1px' }}>
-              Welcome Back
+              {isSignUp ? 'Create Account' : 'Welcome Back'}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-              Secure access to Leads & Meetings
+              {isSignUp ? 'Join Leads & Meetings' : 'Secure access to Leads & Meetings'}
             </p>
           </div>
 
@@ -164,11 +204,41 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
             </motion.div>
           )}
 
+          {successMessage && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+              style={{
+                background: '#dcfce7', color: '#15803d', padding: '10px 15px', borderRadius: '8px',
+                fontSize: '0.85rem', marginBottom: '1.5rem', border: '1px solid #bbf7d0'
+              }}
+            >
+              {successMessage}
+            </motion.div>
+          )}
+
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <AnimatePresence mode="popLayout">
+              {isSignUp && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  style={{ position: 'relative' }}
+                >
+                  <User size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} required={isSignUp}
+                    style={{
+                      width: '100%', padding: '14px 14px 14px 48px', borderRadius: '12px', border: '1px solid var(--border)',
+                      background: '#f8fafc', fontSize: '1rem', outline: 'none', transition: 'all 0.2s ease'
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div style={{ position: 'relative' }}>
               <Mail size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
-                type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required
+                type="email" placeholder={isSignUp ? "Business or Company Domain Mail" : "Email address"} value={email} onChange={(e) => setEmail(e.target.value)} required
                 style={{
                   width: '100%', padding: '14px 14px 14px 48px', borderRadius: '12px', border: '1px solid var(--border)',
                   background: '#f8fafc', fontSize: '1rem', outline: 'none', transition: 'all 0.2s ease'
@@ -179,7 +249,7 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
             <div style={{ position: 'relative' }}>
               <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
-                type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                type={showPassword ? 'text' : 'password'} placeholder={isSignUp ? "New Password" : "Password"} value={password} onChange={(e) => setPassword(e.target.value)} required
                 style={{
                   width: '100%', padding: '14px 48px 14px 48px', borderRadius: '12px', border: '1px solid var(--border)',
                   background: '#f8fafc', fontSize: '1rem', outline: 'none', transition: 'all 0.2s ease'
@@ -198,6 +268,36 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+
+            <AnimatePresence mode="popLayout">
+              {isSignUp && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  style={{ position: 'relative' }}
+                >
+                  <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'} placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required={isSignUp}
+                    style={{
+                      width: '100%', padding: '14px 48px 14px 48px', borderRadius: '12px', border: '1px solid var(--border)',
+                      background: '#f8fafc', fontSize: '1rem', outline: 'none', transition: 'all 0.2s ease'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    style={{
+                      position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-muted)',
+                      display: 'flex', alignItems: 'center'
+                    }}
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginTop: '0.5rem', padding: '12px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: '12px' }}>
               <input
@@ -221,9 +321,22 @@ const LoginLeads = ({ isGreeting, setIsGreeting, currentGreeting, setCurrentGree
               {isLoading ? (
                 <div className="spinner" style={{ width: '20px', height: '20px', border: '3px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div>
               ) : (
-                <>Sign In <ArrowRight size={18} /></>
+                <>{isSignUp ? 'Create Account' : 'Sign In'} <ArrowRight size={18} /></>
               )}
             </button>
+
+            <div style={{ textAlign: 'center', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                {isSignUp ? "Already have an account?" : "Don't have an account?"}
+              </span>
+              <button
+                type="button"
+                onClick={() => { setIsSignUp(!isSignUp); setError(''); setSuccessMessage(''); }}
+                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, marginLeft: '6px', cursor: 'pointer', fontSize: '0.9rem' }}
+              >
+                {isSignUp ? "Sign In" : "Sign Up"}
+              </button>
+            </div>
           </form>
 
           <div style={{
