@@ -429,6 +429,8 @@ def write_report_sheet(
             display_value = value if value not in (None, "") else "-"
             dst_cell.value = display_value
             copy_style(example_cell, dst_cell)
+            if display_value == "-":
+                dst_cell.font = bold_copy(dst_cell.font)
 
             if isinstance(display_value, str) and not display_value.startswith("="):
                 col_width = template.column_widths.get(get_column_letter(col.index))
@@ -473,10 +475,12 @@ def write_report_sheet(
             # it's left blank in the Total row rather than summed like Requested/
             # Sanctioned/Disbursed amounts are. Checked via the header text too,
             # since a percentage stored as a whole number (50, not 0.5) may not
-            # use Excel's own "%" number format at all.
+            # use Excel's own "%" number format at all. ROI columns are rates
+            # too (7.5 means 7.5%), with no "%" anywhere in their header.
             elif (
                 "%" not in col.number_format
                 and "%" not in col.header
+                and "roi" not in col.header_norm
                 and is_numeric_column(col.index)
             ):
                 summable_cols.append(col)
@@ -595,16 +599,18 @@ def filter_rows(
     date_header: Optional[str] = None,
     date_range: Optional[tuple[date, date]] = None,
     sort_key=None,
+    newest_first: bool = False,
 ) -> list[dict[str, object]]:
     """Keep rows whose normalized `field` value is in `allowed_values` (skip
     this check entirely if `field` is None - e.g. Meetings has no status-like
     field to filter by, only a date range), optionally also requiring
     `date_header`'s value to fall within `date_range` (inclusive).
 
-    The kept rows are then sorted, oldest first, by `date_header` - unless
-    `sort_key` overrides this (Pipeline has no reliable Closing Date and no
-    date column in its template at all, so it orders by stage progression
-    instead; see filter_rows_by_stage's `stage_order`)."""
+    The kept rows are then sorted by `date_header`, oldest first unless
+    `newest_first` is set - unless `sort_key` overrides this entirely
+    (Pipeline has no reliable Closing Date and no date column in its template
+    at all, so it orders by stage progression instead; see
+    filter_rows_by_stage's `stage_order`)."""
     out = []
     for row in raw_rows:
         if field is not None and normalize_header(row.get(field)) not in allowed_values:
@@ -617,7 +623,7 @@ def filter_rows(
     if sort_key is not None:
         out.sort(key=sort_key)
     elif date_header:
-        out.sort(key=lambda r: parse_date_value(r.get(date_header)) or date.min)
+        out.sort(key=lambda r: parse_date_value(r.get(date_header)) or date.min, reverse=newest_first)
     return out
 
 
@@ -743,6 +749,7 @@ def build_master_workbook(
             {lead_status_filter},
             "created time",
             fiscal_year_range_,
+            newest_first=True,
         )
         write_report_sheet(
             next_ws(f"New Leads FY - {fiscal_year_label_}"),
