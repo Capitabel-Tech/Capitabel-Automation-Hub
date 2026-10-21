@@ -54,8 +54,11 @@ async def lead_processing_stream(file: UploadFile):
     # mixed in one recording) more reliably than translating in the same pass.
     yield json.dumps({"type": "progress", "percent": 35, "msg": "Transcribing audio..."}) + "\n"
     try:
-        raw_text, transcription_failed = transcribe_audio(
-            file.filename, content,
+        # Runs the blocking OpenAI call in a thread, so it doesn't freeze the
+        # server's single event loop - including Render's own health check
+        # pings - for the whole duration of the call.
+        raw_text, transcription_failed = await run_in_threadpool(
+            transcribe_audio, file.filename, content,
             prompt="This is a real estate home loan sales field call recording, often mixing English "
                    "with Tamil, Telugu, Hindi, and Kannada."
         )
@@ -80,7 +83,7 @@ async def lead_processing_stream(file: UploadFile):
     # Stage 2: Translate to English + remove filler words in one LLM pass.
     yield json.dumps({"type": "progress", "percent": 60, "msg": "Translating & cleaning transcript..."}) + "\n"
     try:
-        clean_text = translate_and_clean(raw_text)
+        clean_text = await run_in_threadpool(translate_and_clean, raw_text)
     except OpenAIAuthError:
         yield json.dumps({"type": "error", "code": "AI_KEY_EXPIRED", "msg": AI_KEY_EXPIRED_MSG}) + "\n"
         return
@@ -89,7 +92,7 @@ async def lead_processing_stream(file: UploadFile):
 
     yield json.dumps({"type": "progress", "percent": 82, "msg": "Extracting lead fields..."}) + "\n"
     try:
-        fields = extract_lead_fields(clean_text)
+        fields = await run_in_threadpool(extract_lead_fields, clean_text)
     except OpenAIAuthError:
         yield json.dumps({"type": "error", "code": "AI_KEY_EXPIRED", "msg": AI_KEY_EXPIRED_MSG}) + "\n"
         return

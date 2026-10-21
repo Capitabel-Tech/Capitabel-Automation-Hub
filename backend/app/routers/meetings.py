@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import AuthenticationError as OpenAIAuthError
@@ -47,7 +48,10 @@ async def meeting_processing_stream(file: UploadFile):
 
     yield json.dumps({"type": "progress", "percent": 48, "msg": "Extracting Meeting Intelligence..."}) + "\n"
     try:
-        extracted, total_rows = await extract_meeting_details_with_ai(temp_path)
+        # Runs the (blocking) Excel parse + OpenAI call in a thread, so it
+        # doesn't freeze the server's single event loop - including Render's
+        # own health check pings - for the whole duration of that call.
+        extracted, total_rows = await run_in_threadpool(extract_meeting_details_with_ai, temp_path)
     except OpenAIAuthError:
         logger.error("OpenAI API key is invalid/expired — meeting extraction cannot run.")
         yield json.dumps({"type": "error", "code": "AI_KEY_EXPIRED", "msg": AI_KEY_EXPIRED_MSG}) + "\n"

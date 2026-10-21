@@ -150,10 +150,15 @@ def extract_text_from_doc(file_path):
             # But let's check if the first row in df_cleaned is actually the header.
             total_rows = max(0, len(df_cleaned) - 1)
 
-            raw_json = df_cleaned.to_json(orient='records')
+            # CSV instead of JSON records - JSON repeats every column name on
+            # every row, which can blow past the model's context limit on a
+            # large sheet (a real file once produced 157K tokens this way,
+            # over gpt-4o-mini's 128K cap, and OpenAI rejected the request
+            # outright). CSV carries the same data with the header written once.
+            raw_csv = df_cleaned.to_csv(index=False)
             with open("sync_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"[DEBUG] Raw Excel Data: {raw_json[:500]}...\n")
-            return raw_json, total_rows
+                f.write(f"[DEBUG] Raw Excel Data: {raw_csv[:500]}...\n")
+            return raw_csv, total_rows
         except Exception as e:
             logger.error(f"Excel reading error: {e}")
             return "", 0
@@ -161,7 +166,7 @@ def extract_text_from_doc(file_path):
     return "", 0
 
 
-async def extract_meeting_details_with_ai(file_path):
+def extract_meeting_details_with_ai(file_path):
     file_ext = os.path.splitext(file_path)[1].lower()
     if file_ext not in ['.xlsx', '.xls']:
         logger.warning(f"Unsupported file type for meetings: {file_ext}. Only Excel is supported.")
@@ -174,7 +179,7 @@ async def extract_meeting_details_with_ai(file_path):
 
     messages = [
         {"role": "system", "content": "You are a specialized Excel data analyst. Extract all rows into JSON accurately."},
-        {"role": "user", "content": f"{prompt}\n\nExcel Content (JSON Format):\n{text}"}
+        {"role": "user", "content": f"{prompt}\n\nExcel Content (CSV Format):\n{text}"}
     ]
 
     try:
