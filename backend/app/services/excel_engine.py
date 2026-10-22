@@ -282,6 +282,7 @@ def write_report_sheet(
     template: ParsedTemplate,
     raw_rows: list[dict[str, object]],
     quarter_label: Optional[str] = None,
+    tat_date_label: Optional[str] = None,
 ) -> None:
     """Writes one template-driven report into `out_ws` (an existing, already-titled
     worksheet). `raw_rows` may be empty - that just produces a title/header-only sheet,
@@ -363,10 +364,13 @@ def write_report_sheet(
     for col in template.columns:
         src_cell = src_ws.cell(template.header_row, col.index)
         dst_cell = out_ws.cell(template.header_row, col.index)
-        dst_cell.value = col.header
+        header_text = col.header
+        if tat_date_label and "{TAT_DATE}" in header_text:
+            header_text = header_text.replace("{TAT_DATE}", tat_date_label)
+        dst_cell.value = header_text
         copy_style(src_cell, dst_cell)
         col_width = template.column_widths.get(get_column_letter(col.index))
-        header_max_lines = max(header_max_lines, wrapped_line_count(col.header, col_width))
+        header_max_lines = max(header_max_lines, wrapped_line_count(header_text, col_width))
     template_header_height = src_ws.row_dimensions.get(template.header_row)
     min_header_height = (
         template_header_height.height
@@ -468,7 +472,12 @@ def write_report_sheet(
             if col.is_formula:
                 if "/" in col.formula:
                     ratio_cols.append(col)
-                else:
+                # A +/- formula column (sum of differences = difference of
+                # sums) is only safely summable when it's an additive amount,
+                # which in this template convention always carries an
+                # explicit currency/number format - a day-count like TAT
+                # uses plain "General" and shouldn't be summed across rows.
+                elif col.number_format != "General":
                     summable_cols.append(col)
             # A passthrough percentage (e.g. "Probability (%)") isn't a plain
             # amount - summing percentages across rows isn't meaningful, so
@@ -521,6 +530,11 @@ def write_report_sheet(
                 cell = out_ws.cell(total_row, col.index)
                 if cell.value in (None, "") and col.index != label_col.index:
                     cell.value = "-"
+                    # A blank cell never went through copy_style elsewhere in
+                    # this row, so without this it falls back to Excel's
+                    # left-aligned default for text instead of matching the
+                    # column's own (usually centered) alignment.
+                    cell.alignment = copy.copy(src_ws.cell(template.example_row, col.index).alignment)
                 cell.font = bold_copy(cell.font)
                 cell.fill = TOTAL_FILL
 
@@ -645,6 +659,44 @@ def filter_rows_by_stage(
     return filter_rows(raw_rows, "stage", stages, date_header, date_range, sort_key=sort_key)
 
 
+def merge_payout_data(
+    rows: list[dict[str, object]], payout_rows: Optional[list[dict[str, object]]]
+) -> list[dict[str, object]]:
+    """Augments each Deals row with its matching Payout file row, if any -
+    matched by (Deal Name, Closing Date) together, not Deal Name alone, since
+    the same deal name can legitimately appear in more than one quarter's
+    sheet (re-financed, re-closed, etc.) with a different Closing Date each
+    time; matching on name alone could attach the wrong payout entry to the
+    wrong occurrence. A row with no match is returned unchanged - its new
+    columns then simply come out blank, same as any other missing field."""
+    if not payout_rows:
+        return rows
+
+    lookup: dict[tuple[str, date], dict[str, object]] = {}
+    for p in payout_rows:
+        name = normalize_header(p.get("deal name"))
+        closing = parse_date_value(p.get("closing date"))
+        if name and closing:
+            lookup[(name, closing)] = p
+
+    merged = []
+    for row in rows:
+        name = normalize_header(row.get("deal name"))
+        closing = parse_date_value(row.get("closing date"))
+        match = lookup.get((name, closing)) if name and closing else None
+        if match:
+            row = {
+                **row,
+                "expected revenue": match.get("expected revenue"),
+                "payout received date": match.get("payout received date"),
+                "payout status": match.get("payout status"),
+                "current date": match.get("current date"),
+                "receivable status": match.get("status"),
+            }
+        merged.append(row)
+    return merged
+
+
 def build_master_workbook(
     deals_template: Optional[ParsedTemplate],
     pipeline_high_template: Optional[ParsedTemplate],
@@ -668,6 +720,8 @@ def build_master_workbook(
     meeting_date_header: Optional[str] = None,
     meeting_month_range: Optional[tuple[date, date]] = None,
     meeting_month_label: Optional[str] = None,
+    payout_raw_rows: Optional[list[dict[str, object]]] = None,
+    tat_date_label: Optional[str] = None,
 ) -> bytes:
     """Builds one workbook with a sheet per quarter of the current fiscal year
     already fully elapsed (Deals), a "Till Date" Deals sheet for the quarter in
@@ -695,18 +749,21 @@ def build_master_workbook(
             rows = filter_rows_by_stage(
                 master_raw_rows, deals_stages, "closing date", quarter_date_ranges[q]
             )
+            rows = merge_payout_data(rows, payout_raw_rows)
             ws = next_ws(f"DEALS For {q}")
-            write_report_sheet(ws, deals_template, rows, q)
+            write_report_sheet(ws, deals_template, rows, q, tat_date_label=tat_date_label)
 
         till_date_rows = filter_rows_by_stage(
             master_raw_rows, deals_stages, "closing date", quarter_date_ranges[current_quarter]
         )
+        till_date_rows = merge_payout_data(till_date_rows, payout_raw_rows)
         till_date_ws = next_ws(f"DEALS For {current_quarter} - Till Date")
         write_report_sheet(
             till_date_ws,
             deals_template,
             till_date_rows,
             f"{current_quarter} - Till Date",
+            tat_date_label=tat_date_label,
         )
 
     # Pipeline High and Low are two genuinely separate templates (different
@@ -749,6 +806,12 @@ def build_master_workbook(
             fiscal_year_range_,
             newest_first=True,
         )
+        # "Date" is Created Time with the time-of-day dropped - the raw file
+        # has no column already named "Date", so it's derived here rather
+        # than relying on the usual match-by-header-text passthrough.
+        lead_rows = [
+            {**row, "date": parse_date_value(row.get("created time"))} for row in lead_rows
+        ]
         write_report_sheet(
             next_ws(f"New Leads FY - {fiscal_year_label_}"),
             leads_template,

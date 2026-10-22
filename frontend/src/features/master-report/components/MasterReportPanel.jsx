@@ -7,6 +7,7 @@ export default function MasterReportPanel() {
   const [file, setFile] = useState(null)
   const [leadsFile, setLeadsFile] = useState(null)
   const [meetingsFile, setMeetingsFile] = useState(null)
+  const [payoutFile, setPayoutFile] = useState(null)
   const [status, setStatus] = useState('idle') // idle | working | done | error
   const [error, setError] = useState('')
 
@@ -17,7 +18,7 @@ export default function MasterReportPanel() {
     setStatus('working')
     setError('')
     try {
-      await processMasterReport(file, leadsFile, meetingsFile)
+      await processMasterReport(file, leadsFile, meetingsFile, payoutFile)
       setStatus('done')
     } catch (e) {
       setStatus('error')
@@ -29,6 +30,7 @@ export default function MasterReportPanel() {
     setFile(null)
     setLeadsFile(null)
     setMeetingsFile(null)
+    setPayoutFile(null)
     setStatus('idle')
     setError('')
   }
@@ -73,6 +75,14 @@ export default function MasterReportPanel() {
         onSelect={(f) => { setMeetingsFile(f); setStatus('idle'); setError('') }}
       />
 
+      <p className="panel-hint" style={{ margin: '16px 0 6px', fontWeight: 600 }}>
+        4. Payout report <span style={{ fontWeight: 400 }}>(optional — adds Expected Revenue, Payout and TAT columns to the Deals sheets; requires the Master Report above)</span>
+      </p>
+      <FileDrop
+        file={payoutFile}
+        onSelect={(f) => { setPayoutFile(f); setStatus('idle'); setError('') }}
+      />
+
       <div className="actions">
         <button disabled={!ready || status === 'working'} onClick={handleProcess}>
           {status === 'working' ? (
@@ -83,7 +93,7 @@ export default function MasterReportPanel() {
             'Process & Download'
           )}
         </button>
-        {(file || leadsFile || meetingsFile) && status !== 'working' && (
+        {(file || leadsFile || meetingsFile || payoutFile) && status !== 'working' && (
           <button className="secondary" onClick={clearAll}>
             Clear
           </button>

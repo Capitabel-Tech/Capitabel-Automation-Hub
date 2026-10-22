@@ -1,5 +1,5 @@
 import io
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -10,6 +10,7 @@ from app.services.firebase_auth import require_auth
 from app.config import (
     DEALS_STAGES,
     LEAD_STATUS_FILTER,
+    PAYOUT_ANCHOR_HEADERS,
     PERIOD_OPTIONS,
     PIPELINE_HIGH_STAGES,
     PIPELINE_HIGH_STAGE_ORDER,
@@ -44,14 +45,22 @@ async def process_master_report(
     file: Optional[UploadFile] = None,
     leads_file: Optional[UploadFile] = None,
     meetings_file: Optional[UploadFile] = None,
+    payout_file: Optional[UploadFile] = None,
     user: dict = Depends(require_auth("master_report")),
 ):
     # Each of the three reports is independent - only require whichever ones
     # were actually uploaded, and build whichever sheets that data supports.
+    # Payout isn't independent, though - it only ever adds columns onto Deals,
+    # so uploading it without the main Deals file wouldn't do anything.
     if not (file or leads_file or meetings_file):
         raise HTTPException(status_code=400, detail="Please upload at least one report.")
+    if payout_file is not None and file is None:
+        raise HTTPException(
+            status_code=400,
+            detail="The Payout file only adds columns to the Deals sheets - please also upload the Deals/Pipeline file.",
+        )
 
-    for f in (file, leads_file, meetings_file):
+    for f in (file, leads_file, meetings_file, payout_file):
         if f is not None and not f.filename.lower().endswith((".xlsx", ".xlsm")):
             raise HTTPException(status_code=400, detail="Please upload .xlsx files.")
 
@@ -92,6 +101,10 @@ async def process_master_report(
     fy_label = fiscal_year_label(fy_start)
     month_range = current_month_range(today)
     month_label = current_month_label(today)
+    # The TAT column header always shows the day *after* whenever the report
+    # is generated, per explicit client decision - not the generation date
+    # itself.
+    tat_date_label = (today + timedelta(days=1)).strftime("%d-%m-%Y")
 
     try:
         raw_rows = (
@@ -107,6 +120,11 @@ async def process_master_report(
         meetings_rows = (
             read_raw_upload(await meetings_file.read(), anchor_headers=TEMPLATE_ANCHOR_HEADERS["meetings"])
             if meetings_file is not None
+            else None
+        )
+        payout_rows = (
+            read_raw_upload(await payout_file.read(), anchor_headers=PAYOUT_ANCHOR_HEADERS)
+            if payout_file is not None
             else None
         )
         # The raw export's "From" (meeting start, with a time component) is a
@@ -139,6 +157,8 @@ async def process_master_report(
             meeting_date_header="date of meeting",
             meeting_month_range=month_range,
             meeting_month_label=month_label,
+            payout_raw_rows=payout_rows,
+            tat_date_label=tat_date_label,
         )
     except EngineError as e:
         log_activity(
@@ -155,6 +175,7 @@ async def process_master_report(
             "included_master": file is not None,
             "included_leads": leads_file is not None,
             "included_meetings": meetings_file is not None,
+            "included_payout": payout_file is not None,
         },
     )
     return Response(

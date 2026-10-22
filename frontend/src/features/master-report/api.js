@@ -70,11 +70,12 @@ export async function uploadTemplate(reportType, file) {
   return res.json()
 }
 
-export async function processMasterReport(file, leadsFile, meetingsFile) {
+export async function processMasterReport(file, leadsFile, meetingsFile, payoutFile) {
   const form = new FormData()
   if (file) form.append('file', file)
   if (leadsFile) form.append('leads_file', leadsFile)
   if (meetingsFile) form.append('meetings_file', meetingsFile)
+  if (payoutFile) form.append('payout_file', payoutFile)
   const res = await apiFetch(`${API_BASE}/process/master`, {
     method: 'POST',
     body: form,

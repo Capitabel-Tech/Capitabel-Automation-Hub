@@ -55,6 +55,11 @@ TEMPLATE_ANCHOR_HEADERS = {
     "meetings": ["title", "contact name", "staff", "location"],
 }
 
+# Not a template (no output sheet of its own) - just the raw upload used to
+# find the header row of the Payout file, matched against Deals/Pipeline by
+# Deal Name + Closing Date.
+PAYOUT_ANCHOR_HEADERS = ["deal name", "expected revenue", "payout status", "closing date"]
+
 LEAD_STATUS_FILTER = "new"
 
 # Stage values (normalized lowercase) that count as "closed" for a Deals sheet.
