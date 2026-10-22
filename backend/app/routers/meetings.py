@@ -7,18 +7,12 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from openai import AuthenticationError as OpenAIAuthError
 
-from app.settings import INCOMING_DIR, logger
+from app.settings import INCOMING_DIR
 from app.services.activity_log import log_activity
 from app.services.firebase_auth import require_auth
-from app.services.meeting_extraction import extract_meeting_details_with_ai
+from app.services.meeting_extraction import extract_meeting_details
 from app.services.zoho_client import push_meetings_to_zoho
-
-AI_KEY_EXPIRED_MSG = (
-    "The AI service isn't working right now — its API key has expired or is invalid. "
-    "Please ask your admin to renew it."
-)
 
 router = APIRouter(prefix="/api", tags=["meetings"])
 
@@ -35,27 +29,17 @@ async def meeting_processing_stream(file: UploadFile):
     os.makedirs(INCOMING_DIR, exist_ok=True)
     temp_path = os.path.join(INCOMING_DIR, file.filename)
 
-    yield json.dumps({"type": "progress", "percent": 2, "msg": "Waking up AI..."}) + "\n"
-    await asyncio.sleep(0.3)
     yield json.dumps({"type": "progress", "percent": 12, "msg": "Uploading document..."}) + "\n"
     content = await file.read()
     with open(temp_path, "wb") as buffer:
         buffer.write(content)
     await asyncio.sleep(0.3)
 
-    yield json.dumps({"type": "progress", "percent": 28, "msg": "Scanning Excel rows..."}) + "\n"
-    await asyncio.sleep(0.4)
-
-    yield json.dumps({"type": "progress", "percent": 48, "msg": "Extracting Meeting Intelligence..."}) + "\n"
-    try:
-        # Runs the (blocking) Excel parse + OpenAI call in a thread, so it
-        # doesn't freeze the server's single event loop - including Render's
-        # own health check pings - for the whole duration of that call.
-        extracted, total_rows = await run_in_threadpool(extract_meeting_details_with_ai, temp_path)
-    except OpenAIAuthError:
-        logger.error("OpenAI API key is invalid/expired — meeting extraction cannot run.")
-        yield json.dumps({"type": "error", "code": "AI_KEY_EXPIRED", "msg": AI_KEY_EXPIRED_MSG}) + "\n"
-        return
+    yield json.dumps({"type": "progress", "percent": 48, "msg": "Reading meeting rows..."}) + "\n"
+    # Runs the (blocking) Excel parse in a thread, so it doesn't freeze the
+    # server's single event loop - including Render's own health check pings
+    # - while a large file is being read.
+    extracted, total_rows = await run_in_threadpool(extract_meeting_details, temp_path)
 
     if not extracted or "meetings" not in extracted:
         yield json.dumps({"type": "error", "msg": "No meetings found in file"}) + "\n"
@@ -75,7 +59,7 @@ async def meeting_processing_stream(file: UploadFile):
         if meeting_staff == "Unknown" or meeting_staff is None:
             meeting_staff = ""
 
-        m_title = m.get("title") or "Field Meeting"
+        m_title = m.get("title")
         m_name = m.get("name") or m.get("Contact_Name") or "Unknown Contact"
         m_phone = str(m.get("phone") or m.get("Phone") or "").strip()
         m_start = m.get("from")

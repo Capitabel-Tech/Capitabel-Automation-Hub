@@ -8,7 +8,6 @@ import { motion } from 'framer-motion';
 
 const Home = () => {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState('All Tools');
   const [showLeadsInfo, setShowLeadsInfo] = useState(false);
   const [showReportsInfo, setShowReportsInfo] = useState(false);
   const leadsCardRef = useRef(null);

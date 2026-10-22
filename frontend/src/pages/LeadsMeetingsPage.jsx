@@ -224,7 +224,7 @@ const LeadsMeetingsPage = () => {
       hours = hours % 12;
       hours = hours ? hours : 12; // the hour '0' should be '12'
       return `${hours}:${minutes} ${ampm}`;
-    } catch (e) { return isoStr; }
+    } catch { return isoStr; }
   };
 
   const resetAll = () => {
@@ -470,7 +470,7 @@ const LeadsMeetingsPage = () => {
               if (data.type === 'progress') setSyncProgress({ current: data.current, total: data.total, name: data.name });
               else if (data.type === 'result') finalResults = data.results;
               else if (data.type === 'error') throw new Error(data.msg);
-            } catch(e) {}
+            } catch { /* ignore malformed trailing chunk */ }
           }
           break;
         }

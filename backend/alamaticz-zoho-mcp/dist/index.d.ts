@@ -2,11 +2,15 @@
 /**
  * Zoho CRM MCP Server
  *
- * Provides tools to interact with Zoho CRM v7 API:
- * - Record CRUD (get, create, update, upsert, delete, search)
- * - Related records, lead conversion, tags, attachments
- * - Settings metadata (fields, modules, roles, pipelines)
- * - Users and organization info
+ * This app's own code only ever calls two tools - zohocrm_create_records
+ * (new Leads, new Meetings-as-Events) and zohocrm_search_records
+ * (duplicate-lead check, meeting contact match). Every tool with real write
+ * power beyond plain create (update, upsert, delete, convert_lead, add_tags,
+ * attach_link, upload_file) has been removed from this server entirely, not
+ * just left unused, so nothing can call them even by accident. The harmless,
+ * read-only metadata tools (get_records, get_record, and everything in
+ * settings.ts/users.ts) are kept available for ad-hoc diagnostics, since
+ * they can't change or delete anything in Zoho.
  *
  * Authentication: OAuth 2.0 with refresh token
  * Required environment variables:

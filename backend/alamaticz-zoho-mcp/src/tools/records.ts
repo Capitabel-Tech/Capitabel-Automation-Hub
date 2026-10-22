@@ -1,13 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import * as fs from "fs";
-import * as path from "path";
 import { createZohoClient, handleApiError } from "../services/zoho-client.js";
 import { CHARACTER_LIMIT } from "../constants.js";
 import type {
   ZohoListResponse,
   ZohoActionResponse,
-  ZohoConvertLeadResponse,
 } from "../types.js";
 
 export function registerRecordTools(server: McpServer): void {
@@ -135,76 +132,6 @@ export function registerRecordTools(server: McpServer): void {
         return {
           content: [{ type: "text", text: text.length > CHARACTER_LIMIT ? text.slice(0, CHARACTER_LIMIT) + "\n... [truncated]" : text }]
         };
-      } catch (error) {
-        return { content: [{ type: "text", text: handleApiError(error) }] };
-      }
-    }
-  );
-
-  // ── UPLOAD ATTACHMENT ──────────────────────────────────────────────────────
-  server.registerTool(
-    "zohocrm_attach_link",
-    {
-      title: "Attach a Link to a Record",
-      description: `Attach a URL link as an attachment.`,
-      inputSchema: z.object({
-        module: z.string().min(1),
-        record_id: z.string().min(1),
-        attachment_url: z.string().url(),
-        title: z.string().optional(),
-      }).strict(),
-    },
-    async ({ module, record_id, attachment_url, title }) => {
-      try {
-        const client = await createZohoClient();
-        const params: Record<string, string> = { attachmentUrl: attachment_url };
-        if (title) params.title = title;
-        const response = await client.post(`/${module}/${record_id}/Attachments`, null, { params });
-        return {
-          content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }]
-        };
-      } catch (error) {
-        return { content: [{ type: "text", text: handleApiError(error) }] };
-      }
-    }
-  );
-  
-  // ── UPLOAD FILE ────────────────────────────────────────────────────────────
-  server.registerTool(
-    "zohocrm_upload_file",
-    {
-      title: "Upload File to a Record",
-      description: `Upload an actual file as an attachment.`,
-      inputSchema: z.object({
-        module: z.string().min(1),
-        record_id: z.string().min(1),
-        file_path: z.string().min(1),
-      }).strict(),
-    },
-    async ({ module, record_id, file_path }) => {
-      try {
-        if (!fs.existsSync(file_path)) {
-          return { content: [{ type: "text", text: `Error: File not found at ${file_path}` }] };
-        }
-
-        const client = await createZohoClient();
-        const fileContent = fs.readFileSync(file_path);
-        const fileName = path.basename(file_path);
-        
-        // In Node 24, use File for correct boundary attachment name
-        const fileObj = new File([fileContent], fileName);
-        const formData = new FormData();
-        formData.append("file", fileObj);
-
-        const response = await client.post(`/${module}/${record_id}/Attachments`, formData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
-        
-        return {
-          content: [{ type: "text", text: JSON.stringify(response.data, null, 2) }]
-        }; 
       } catch (error) {
         return { content: [{ type: "text", text: handleApiError(error) }] };
       }

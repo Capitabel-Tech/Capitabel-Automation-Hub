@@ -475,12 +475,10 @@ def write_report_sheet(
             # it's left blank in the Total row rather than summed like Requested/
             # Sanctioned/Disbursed amounts are. Checked via the header text too,
             # since a percentage stored as a whole number (50, not 0.5) may not
-            # use Excel's own "%" number format at all. ROI columns are rates
-            # too (7.5 means 7.5%), with no "%" anywhere in their header.
+            # use Excel's own "%" number format at all.
             elif (
                 "%" not in col.number_format
                 and "%" not in col.header
-                and "roi" not in col.header_norm
                 and is_numeric_column(col.index)
             ):
                 summable_cols.append(col)

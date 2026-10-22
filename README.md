@@ -40,7 +40,6 @@ npm run dev
 | Variable | What it's for |
 |---|---|
 | `OPENAI_API_KEY` | Transcription and lead extraction |
-| `MODEL_ID` | Model used for the translation/cleanup step (default `gpt-4o-mini`) |
 | `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` | Zoho CRM OAuth credentials |
 | `ZOHO_API_DOMAIN`, `ZOHO_ACCOUNTS_URL` | Zoho region (India: `zohoapis.in` / `accounts.zoho.in`) |
 | `DATABASE_URL` | Postgres connection string (Supabase, via the connection pooler) |

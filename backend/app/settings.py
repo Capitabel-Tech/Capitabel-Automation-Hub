@@ -15,7 +15,6 @@ def get_env_var(key):
 
 
 openai_client = OpenAI(api_key=get_env_var("OPENAI_API_KEY"))
-MEETING_MODEL = get_env_var("MODEL_ID") or "gpt-4o"
 
 ZOHO_MCP_SCRIPT = os.path.join(BASE_DIR, "alamaticz-zoho-mcp", "dist", "index.js")
 

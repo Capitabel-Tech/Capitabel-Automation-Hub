@@ -139,7 +139,7 @@ async def push_meetings_to_zoho(meetings, original_filename=None, staff=None):
                         "name": m_data.get("name") or m_data.get("Contact_Name", "Unknown")
                     }) + "\n"
 
-                    title = m_data.get("title") or m_data.get("Meeting_Title") or "Field Meeting"
+                    title = m_data.get("title") or m_data.get("Meeting_Title")
                     contact_name = m_data.get("name") or m_data.get("Contact_Name") or "Unknown Contact"
                     start_time = m_data.get("from") or m_data.get("Start_DateTime")
                     end_time = m_data.get("to") or m_data.get("End_DateTime")
